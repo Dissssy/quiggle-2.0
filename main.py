@@ -1730,7 +1730,7 @@ async def invitecommand(ctx: lightbulb.SlashContext) -> None:
     r = bot.rest.build_action_row()
     r.add_button(
         hikari.ButtonStyle.LINK,
-        r"https://discord.com/oauth2/authorize?client_id=873375635731513384&permissions=2048&scope=bot%20applications.commands",
+        rf"{config['invite_link']}",
     ).set_label("Invite me!").add_to_container()
     components.append(r)
     await ctx.author.send(components=components)

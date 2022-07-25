@@ -1,0 +1,12 @@
+{
+    "dburi": "PATH TO DB.db",
+    "debugbottoken": "DEBUG BOT TOKEN",
+    "bottoken": "PRODUCTION BOT TOKEN",
+    "debugguilds": [
+        GUILD ID FOR DEBUG GUILDS
+    ],
+    "nerds": [
+        USER IDS FOR NERDS
+    ],
+    "invite_url": "https://discord.com/oauth2/authorize?client_id= {APP ID} &permissions=2048&scope=bot%20applications.commands"
+}
