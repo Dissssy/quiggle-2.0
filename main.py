@@ -51,15 +51,68 @@ def get_options(user, option):
 
 
 def set_options(user, option, setting):
-
-    print(f"INSERT OR IGNORE INTO {option} (user_id) VALUES ({user})")
-    print(f"UPDATE {option} SET setting = {setting} WHERE user_id = {user}")
-
     cur = db.cursor()
     cur.execute(f"INSERT OR IGNORE INTO {option} (user_id) VALUES ({user})")
     cur.execute(f"UPDATE {option} SET setting = {setting} WHERE user_id = {user}")
     cur.close()
     db.commit()
+
+
+def get_leaderboard_values(user):
+    cur = db.cursor()
+    response = cur.execute(
+        f"""SELECT json FROM LEADERBOARD WHERE user_id = {user}"""
+    ).fetchone()
+    cur.close()
+    if response is None:
+        return decode(encode({}))
+    return decode(response[0])
+
+
+def increment_leaderboard_value(user, game):
+    if not dev:
+        cur = db.cursor()
+        values = get_leaderboard_values(user)
+        values[game] = values.get(game, 0) + 1
+
+        cur.execute(
+            f"""INSERT OR IGNORE INTO LEADERBOARD (user_id, json) VALUES ({user}, "")"""
+        )
+        cur.execute(
+            f"""UPDATE LEADERBOARD SET json = "{encode(values)}" WHERE user_id = {user}"""
+        )
+        cur.close()
+        db.commit()
+    else:
+        print(f"increment {game} for {user}")
+
+
+def get_leaderboard_string(user):
+    values = get_leaderboard_values(user)
+    stringey = f"wins for <@{user}>"
+    for k in values.keys():
+        stringey += f"\n{readable[k]}: **{values[k]}**"
+    return stringey
+
+
+def get_leaderboard_string_for_game(game):
+    cur = db.cursor()
+    values = cur.execute("SELECT * FROM LEADERBOARD").fetchall()
+    cur.close()
+
+    userlist = []
+    for i in values:
+        uservalue = decode(i[1]).get(game, None)
+        if uservalue is not None:
+            userlist.append([i[0], uservalue])
+        userlist.sort(key=lambda x: x[1], reverse=True)
+    string = f"Leaderboard for {readable[game]}"
+    go = 10
+    if len(userlist) < 10:
+        go = len(userlist)
+    for i in range(go):
+        string += f"\n<@{userlist[i][0]}>: **{userlist[i][1]}**"
+    return string
 
 
 class TicTacToe:
@@ -92,12 +145,19 @@ class TicTacToe:
 
     def make_move(self, move):
         if move in self.get_moves():
-            movep = move.split("|")
-            self.board[int(movep[1])][int(movep[0])] = self.turn
-            self.checkwin()
             if self.winner is None:
-                self.turn = (self.turn + 1) % 2
-                return True
+                movep = move.split("|")
+                self.board[int(movep[1])][int(movep[0])] = self.turn
+                self.checkwin()
+                if self.winner is None:
+                    self.turn = (self.turn + 1) % 2
+                    return True
+                else:
+                    if self.winner != 2:
+                        increment_leaderboard_value(
+                            self.players[self.winner], "TicTacToe"
+                        )
+
         return False
 
     def get_data(self):
@@ -240,24 +300,30 @@ class UltTicTacToe:
         return moves
 
     def make_move(self, move):
-        meta = False
-        if self.currentboard[0] is None:
-            meta = True
-        if move in self.get_moves():
-            movep = move.split("|")
-            if not meta:
-                self.board[self.currentboard[1]][self.currentboard[0]][int(movep[1])][
-                    int(movep[0])
-                ] = self.turn
-                self.checkwin()
-            self.metacheckwin()
-            if self.boardwinners[int(movep[1])][int(movep[0])] is None:
-                self.currentboard = [int(movep[1]), int(movep[0])]
-            else:
-                self.currentboard = [None, None]
-            if self.winner is None and not meta:
-                self.turn = (self.turn + 1) % 2
-                return True
+        if self.winner is None:
+            meta = False
+            if self.currentboard[0] is None:
+                meta = True
+            if move in self.get_moves():
+                movep = move.split("|")
+                if not meta:
+                    self.board[self.currentboard[1]][self.currentboard[0]][
+                        int(movep[1])
+                    ][int(movep[0])] = self.turn
+                    self.checkwin()
+                self.metacheckwin()
+                if self.boardwinners[int(movep[1])][int(movep[0])] is None:
+                    self.currentboard = [int(movep[1]), int(movep[0])]
+                else:
+                    self.currentboard = [None, None]
+                if self.winner is None and not meta:
+                    self.turn = (self.turn + 1) % 2
+                    return True
+                else:
+                    if self.winner != 2:
+                        increment_leaderboard_value(
+                            self.players[self.winner], "UltTicTacToe"
+                        )
         return False
 
     def checkwin(self):
@@ -395,8 +461,8 @@ class UltTicTacToe:
         r = bot.rest.build_action_row()
         r.add_button(
             hikari.ButtonStyle.LINK,
-            r"https://en.wikipedia.org/wiki/Ultimate_tic-tac-toe",
-        ).set_label("Wikipedia Article (Rules)").add_to_container()
+            r"https://en.wikipedia.org/wiki/Ultimate_tic-tac-toe#Rules",
+        ).set_label("Rules").add_to_container()
         components.append(r)
         return components
 
@@ -501,16 +567,22 @@ class ConnectFour:
         return moves
 
     def make_move(self, move):
-        move = int(move)
-        if move in self.get_moves():
-            for i in range(len(self.board[move])):
-                if self.board[move][i] is None:
-                    self.board[move][i] = self.turn
-                    break
-            self.checkwin()
-            if self.winner is None:
-                self.turn = (self.turn + 1) % 2
-                return True
+        if self.winner is None:
+            move = int(move)
+            if move in self.get_moves():
+                for i in range(len(self.board[move])):
+                    if self.board[move][i] is None:
+                        self.board[move][i] = self.turn
+                        break
+                self.checkwin()
+                if self.winner is None:
+                    self.turn = (self.turn + 1) % 2
+                    return True
+                else:
+                    if self.winner != 2:
+                        increment_leaderboard_value(
+                            self.players[self.winner], "ConnectFour"
+                        )
         return False
 
     def get_data(self):
@@ -540,7 +612,6 @@ class ConnectFour:
             b = row.add_button(style, f"{i}")
             b.set_is_disabled(disabled)
             b.set_emoji(self.nummap.get(i, "⛔"))
-            # b.set_label(i + 1)
             b.add_to_container()
         components.append(row)
         return components
@@ -706,141 +777,143 @@ class Battleship:
         return moves
 
     def make_move(self, move):
-        ping = False
-        if move == "MAP":
-            self.meta = "map"
-            return
-        if move in self.get_moves():
-            if self.setup:
-                # for (i, j) in enumerate(self.pieces[self.player]):
-                #     if type(j) == type(0):
-                #         self.piece = i
-                #         break
-                movep = move.split("|")
-                if self.piece is None:
-                    self.meta = "noneleft"
-                    return
-                if (
-                    self.selected[self.player].get("x", None) is None
-                    or self.selected[self.player].get("y", None) is None
-                ) and movep[0] == "d":
-                    self.meta = "direction"
-                    return
-                if movep[0] == "d":
-                    shiplength = self.pieces[self.player][self.piece]
-                    direction = self.dirmap[int(movep[1])]
-                    for i in range(shiplength):
-                        if (
-                            0
-                            > (
-                                int(self.selected[self.player]["x"])
-                                + (direction[0] * i)
-                            )
-                            or (
-                                int(self.selected[self.player]["x"])
-                                + (direction[0] * i)
-                            )
-                            > 9
-                        ):
-                            self.meta = "offmap"
-                            return
-                        if (
-                            0
-                            > (
-                                int(self.selected[self.player]["y"])
-                                + (direction[1] * i)
-                            )
-                            or (
-                                int(self.selected[self.player]["y"])
-                                + (direction[1] * i)
-                            )
-                            > 9
-                        ):
-                            self.meta = "offmap"
-                            return
-                        for ship in self.pieces[self.player]:
-                            if not type(ship) == type(0):
-                                if [
+        if self.winner is None:
+            ping = False
+            if move == "MAP":
+                self.meta = "map"
+                return
+            if move in self.get_moves():
+                if self.setup:
+                    movep = move.split("|")
+                    if self.piece is None:
+                        self.meta = "noneleft"
+                        return
+                    if (
+                        self.selected[self.player].get("x", None) is None
+                        or self.selected[self.player].get("y", None) is None
+                    ) and movep[0] == "d":
+                        self.meta = "direction"
+                        return
+                    if movep[0] == "d":
+                        shiplength = self.pieces[self.player][self.piece]
+                        direction = self.dirmap[int(movep[1])]
+                        for i in range(shiplength):
+                            if (
+                                0
+                                > (
+                                    int(self.selected[self.player]["x"])
+                                    + (direction[0] * i)
+                                )
+                                or (
+                                    int(self.selected[self.player]["x"])
+                                    + (direction[0] * i)
+                                )
+                                > 9
+                            ):
+                                self.meta = "offmap"
+                                return
+                            if (
+                                0
+                                > (
+                                    int(self.selected[self.player]["y"])
+                                    + (direction[1] * i)
+                                )
+                                or (
+                                    int(self.selected[self.player]["y"])
+                                    + (direction[1] * i)
+                                )
+                                > 9
+                            ):
+                                self.meta = "offmap"
+                                return
+                            for ship in self.pieces[self.player]:
+                                if not type(ship) == type(0):
+                                    if [
+                                        int(self.selected[self.player]["x"])
+                                        + (direction[0] * i),
+                                        int(self.selected[self.player]["y"])
+                                        + (direction[1] * i),
+                                    ] in ship:
+                                        self.meta = "offmap"
+                                        return
+                        self.pieces[self.player][self.piece] = []
+                        for i in range(shiplength):
+                            self.pieces[self.player][self.piece].append(
+                                [
                                     int(self.selected[self.player]["x"])
                                     + (direction[0] * i),
                                     int(self.selected[self.player]["y"])
                                     + (direction[1] * i),
-                                ] in ship:
-                                    self.meta = "offmap"
-                                    return
-                    self.pieces[self.player][self.piece] = []
-                    for i in range(shiplength):
-                        self.pieces[self.player][self.piece].append(
-                            [
-                                int(self.selected[self.player]["x"])
-                                + (direction[0] * i),
-                                int(self.selected[self.player]["y"])
-                                + (direction[1] * i),
-                            ]
-                        )
-                    self.selected[self.player] = {}
-                else:
-                    self.selected[self.player][movep[0]] = movep[1]
-            else:
-                movep = move.split("|")
-                if self.player != self.turn:
-                    self.meta = "noturturn"
-                    return
-
-                if (
-                    movep[0] == "x"
-                    and self.selected[self.turn].get("y", None) is not None
-                ):
-                    if (
-                        self.board[self.turn][int(movep[1])][
-                            self.selected[self.turn]["y"]
-                        ]
-                        is not None
-                    ):
-                        self.meta = "alreadyhit"
-                        return
-                if (
-                    movep[0] == "y"
-                    and self.selected[self.turn].get("x", None) is not None
-                ):
-                    if (
-                        self.board[self.turn][self.selected[self.turn]["x"]][
-                            int(movep[1])
-                        ]
-                        is not None
-                    ):
-                        self.meta = "alreadyhit"
-                        return
-
-                self.selected[self.turn][movep[0]] = int(movep[1])
-
-                x = self.selected[self.turn].get("x", None)
-                y = self.selected[self.turn].get("y", None)
-
-                if x is not None and y is not None:
-                    hit = False
-                    for i in self.pieces[(self.turn + 1) % 2]:
-                        for j in i:
-                            if j == [x, y]:
-                                hit = True
-                                break
-                        if hit:
-                            break
-                    self.board[self.turn][x][y] = hit
-                    if hit:
-                        self.hit = ":boom: HIT! "
+                                ]
+                            )
+                        self.selected[self.player] = {}
                     else:
-                        self.hit = ":dash: MISS! "
-                    self.selected[self.turn] = {}
+                        self.selected[self.player][movep[0]] = movep[1]
                 else:
-                    self.meta = "updateboard"
-                    return
+                    movep = move.split("|")
+                    if self.player != self.turn:
+                        self.meta = "noturturn"
+                        return
 
-            self.checkwin()
-            if self.winner is None and not self.setup:
-                self.turn = (self.turn + 1) % 2
-                ping = True
-        return ping
+                    if (
+                        movep[0] == "x"
+                        and self.selected[self.turn].get("y", None) is not None
+                    ):
+                        if (
+                            self.board[self.turn][int(movep[1])][
+                                self.selected[self.turn]["y"]
+                            ]
+                            is not None
+                        ):
+                            self.meta = "alreadyhit"
+                            return
+                    if (
+                        movep[0] == "y"
+                        and self.selected[self.turn].get("x", None) is not None
+                    ):
+                        if (
+                            self.board[self.turn][self.selected[self.turn]["x"]][
+                                int(movep[1])
+                            ]
+                            is not None
+                        ):
+                            self.meta = "alreadyhit"
+                            return
+
+                    self.selected[self.turn][movep[0]] = int(movep[1])
+
+                    x = self.selected[self.turn].get("x", None)
+                    y = self.selected[self.turn].get("y", None)
+
+                    if x is not None and y is not None:
+                        hit = False
+                        for i in self.pieces[(self.turn + 1) % 2]:
+                            for j in i:
+                                if j == [x, y]:
+                                    hit = True
+                                    break
+                            if hit:
+                                break
+                        self.board[self.turn][x][y] = hit
+                        if hit:
+                            self.hit = ":boom: HIT! "
+                        else:
+                            self.hit = ":dash: MISS! "
+                        self.selected[self.turn] = {}
+                    else:
+                        self.meta = "updateboard"
+                        return
+
+                self.checkwin()
+                if self.winner is None and not self.setup:
+                    self.turn = (self.turn + 1) % 2
+                    ping = True
+                elif not self.setup:
+                    if self.winner != 2:
+                        increment_leaderboard_value(
+                            self.players[self.winner], "Battleship"
+                        )
+            return ping
 
     def get_data(self):
         data = {
@@ -894,13 +967,6 @@ class Battleship:
                     self.axisemotes[1][i]
                 ).add_to_container()
             components.append(row)
-        else:
-            pass
-            # row = bot.rest.build_action_row()
-            # row.add_button(hikari.ButtonStyle.SECONDARY, f"MAP").set_emoji(
-            #     "🗺️"
-            # ).add_to_container()
-            # components.append(row)
         return components
 
     def build_map(self, secret=False, player=None):
@@ -1107,12 +1173,6 @@ class Battleship:
                     "components": self.build_components(),
                 }
         else:
-            # if self.meta == "map":
-            #     return {
-            #         "responsetype": hikari.ResponseType.MESSAGE_CREATE,
-            #         "text": f"{self.build_map()}",
-            #         "flags": hikari.MessageFlag.EPHEMERAL,
-            #     }
             embeds = []
             for i in range(2):
                 embeds.append(
@@ -1268,16 +1328,20 @@ class Chess:
         return moves
 
     def make_move(self, move):
-        moves = self.get_moves()
-        if move in moves[0][0]:
-            self.move = move
-        elif move in moves[0][1]:
-            self.chess.push(chess.Move.from_uci(move))
-            self.move = None
-            self.checkwin()
-            if self.winner is None:
-                self.turn = (self.turn + 1) % 2
-                return True
+        if self.winner is not None:
+            moves = self.get_moves()
+            if move in moves[0][0]:
+                self.move = move
+            elif move in moves[0][1]:
+                self.chess.push(chess.Move.from_uci(move))
+                self.move = None
+                self.checkwin()
+                if self.winner is None:
+                    self.turn = (self.turn + 1) % 2
+                    return True
+                else:
+                    if self.winner != 2:
+                        increment_leaderboard_value(self.players[self.winner], "Chess")
         return False
 
     def get_data(self):
@@ -1328,17 +1392,18 @@ class Chess:
         return components
 
     def build_board(self):
-        board = "<:quiggle:897058047137030184><:a_:878071110481117205><:b_:878071110544003114><:c_:878071110862766120><:d_:878071110455939104><:e_:878071110749532171><:f_:878071110510465106><:g_:878071110996987935><:h_:878071110892146728>"
+        board = ""
         for rank in range(8):
-            board += f"\n{self.emojis[2][rank]}"
+            board += f"\n{self.emojis[2][7 - rank]}"
             for file in range(8):
-                piece = self.chess.piece_at(chess.square(file, rank))
+                piece = self.chess.piece_at(chess.square(file, 7 - rank))
                 if piece is None:
                     board += self.emojis[1][(file + rank) % 2][chess.WHITE][None]
                 else:
                     board += self.emojis[1][(file + rank) % 2][piece.color][
                         piece.piece_type
                     ]
+        board += "\n<:quiggle:897058047137030184><:a_:878071110481117205><:b_:878071110544003114><:c_:878071110862766120><:d_:878071110455939104><:e_:878071110749532171><:f_:878071110510465106><:g_:878071110996987935><:h_:878071110892146728>"
         return board
 
     def build_message(self):
@@ -1359,13 +1424,10 @@ class Chess:
                 "components": self.build_components(),
             }
         else:
-            embed.title = (
-                f"{self.emojis[0][self.playermap[self.chess.turn]]} is the WINNER!"
-            )
+            embed.title = f"{self.emojis[0][(self.playermap[self.chess.turn] + 1) % 2]} is the WINNER!"
             return {
-                "text": f"```{bn}{encode(self.get_data())}\n[{readable['Chess']}]```<@{self.players[self.playermap[self.chess.turn]]}>",
+                "text": f"```{bn}\n[{readable['Chess']}]```<@{self.players[(self.playermap[self.chess.turn] + 1) % 2]}>",
                 "embed": embed,
-                # "components": self.build_components(),
             }
 
     def checkwin(self):
@@ -1617,6 +1679,22 @@ if dev:
                 flags=hikari.MessageFlag.EPHEMERAL,
             )
 
+    # @bot.command
+    # @lightbulb.command("increment", f"increment test amount")
+    # @lightbulb.implements(lightbulb.SlashCommand)
+    # async def incrementcommand(ctx: lightbulb.SlashContext) -> None:
+    #     if dev:
+    #         await ctx.respond(
+    #             f""": {increment_leaderboard_value(ctx.author.id, "testgame")}"""
+    #         )
+
+else:
+
+    @bot.listen(hikari.events.ExceptionEvent)
+    async def on_exception(event: hikari.ExceptionEvent):
+
+        set_options(time(), "LOG", f'"{event.exception}"')
+
 
 @bot.listen(hikari.InteractionCreateEvent)
 async def on_component_interaction(event: hikari.InteractionCreateEvent) -> None:
@@ -1684,15 +1762,10 @@ async def on_component_interaction(event: hikari.InteractionCreateEvent) -> None
                 )
                 l.set_label("Jump to game!")
                 l.add_to_container()
-                # await bot.rest.get_guild(int(data["guild_id"])).get_member(int(game.players[game.turn])).user.fetch_dm_channel().send(
                 await (await bot.rest.fetch_user(int(game.players[game.turn]))).send(
                     f"It's your turn in {(await bot.rest.fetch_guild(int(data['guild_id']))).name}!\n`psst, dont like the dms? turn off dms with /dmsettings`",
                     components=[components],
                 )
-            # await sleep(0.5)
-            # ping = await event.interaction.get_channel().send(f"<@{game.players[game.turn]}>", user_mentions=True)
-            # await sleep(0.5)
-            # await ping.delete()
             pass
     else:
         await event.interaction.create_initial_response(
@@ -1730,17 +1803,44 @@ async def invitecommand(ctx: lightbulb.SlashContext) -> None:
     r = bot.rest.build_action_row()
     r.add_button(
         hikari.ButtonStyle.LINK,
-        rf"{config['invite_link']}",
+        config["invite_url"],
     ).set_label("Invite me!").add_to_container()
     components.append(r)
     await ctx.author.send(components=components)
     await ctx.respond("sent!", flags=hikari.MessageFlag.EPHEMERAL)
 
 
-@bot.listen(hikari.events.ExceptionEvent)
-async def on_exception(event: hikari.ExceptionEvent):
+@bot.command
+@lightbulb.option(
+    "user", "User to get the win count for", required=False, type=hikari.OptionType.USER
+)
+@lightbulb.command("wins", "Get amount of wins for a user")
+@lightbulb.implements(lightbulb.SlashCommand)
+async def winscommand(ctx: lightbulb.SlashContext) -> None:
+    user = ctx.author.id
+    if ctx.options.user is not None:
+        user = ctx.options.user.id
+    winstring = get_leaderboard_string(user)
+    if winstring == f"wins for <@{user}>":
+        winstring = f"No stored wins for <@{user}>"
+    await ctx.respond(f"{winstring}", flags=hikari.MessageFlag.EPHEMERAL)
 
-    set_options(time(), "LOG", f'"{event.exception}"')
+
+choices = []
+for i in readable.keys():
+    choices.append(i)
+
+
+@bot.command
+@lightbulb.option("game", "Game to get leaderboard for", required=True, choices=choices)
+@lightbulb.command("leaderboard", "Get leaderboard for game")
+@lightbulb.implements(lightbulb.SlashCommand)
+async def winscommand(ctx: lightbulb.SlashContext) -> None:
+
+    winstring = get_leaderboard_string_for_game(ctx.options.game)
+    if winstring == f"Leaderboard for {readable[ctx.options.game]}":
+        winstring = f"No stored wins for {readable[ctx.options.game]}"
+    await ctx.respond(f"{winstring}", flags=hikari.MessageFlag.EPHEMERAL)
 
 
 bot.run()
