@@ -38,6 +38,14 @@ readable = {
     "Chess": "Chess",
 }
 
+rules = {
+    "TicTacToe": "Get three in a row before your opponent! Just click the button where you'd like to make your move and try your best!",
+    "UltTicTacToe": "A Tic Tac Toe board where every space is another Tic Tac Toe board, you start out by selecting the board to move on and then picking the space to make your move within that sub-board. When you move somewhere your opponent has to make their next move on that board. for example if you move in the center square, your opponent has to make their move on the center board. If you attempt to move to a board that is already won, the next player gets to choose which board to play in. Win three boards in a row to win the game!",
+    "ConnectFour": "Its connect four. Select a column to drop your piece down, attempt to get four pieces in a row without letting your opponent do the same.",
+    "Battleship": "You and your opponent start out by placing your ships down in order from longest to shortest [5, 4, 3, 3, 2]. Click the map to see your current ships at any time. Select a space by picking a number, then a letter, then select the ship orientation. This places the ship down with the tail on the spot you selected, and the head in the direction you selected. Once all ships are placed, the game switches to attack mode. During your turn select a letter/number coordinate to fire on, whether or not you hit a ship or missed will be indicated in the message after you fire, as well as be shown on the map once it is your turn again. Sink all enemy ships to win!",
+    "Chess": "The rules of chess are too complex to explain in a discord message, En passant and castling are valid. The game uses chess notation, google it. Players are randomized, White always goes first. Select a piece with the top drop down box, And then select a move with the second+ drop downs. You can change your selected piece at any time so long as you havent made your move yet.",
+}
+
 
 def get_options(user, option):
     cur = db.cursor()
@@ -545,8 +553,10 @@ class ConnectFour:
             8: "9️⃣",
             9: "🔟",
         }
-        self.emojis = [":red_circle:", ":green_circle:"]
-        self.winningemojis = [":japanese_goblin:", ":frog:"]
+        # self.emojis = [":red_circle:", ":green_circle:"]
+        # self.winningemojis = [":japanese_goblin:", ":frog:"]
+        self.emojis = [":cow2:", ":racehorse:"]
+        self.winningemojis = [":cow:", ":horse:"]
         c = 0
         for (i, j) in enumerate(players):
             if j in config["nerds"]:
@@ -557,7 +567,7 @@ class ConnectFour:
                 ][c]
                 c += 1
         self.winningpieces = [[False for _ in range(6)] for _ in range(7)]
-        self.emptyspace = ":small_blue_diamond:"
+        self.emptyspace = "<:grass:1001630000858013766>"
 
     def get_moves(self):
         moves = []
@@ -903,7 +913,6 @@ class Battleship:
                     else:
                         self.meta = "updateboard"
                         return
-
                 self.checkwin()
                 if self.winner is None and not self.setup:
                     self.turn = (self.turn + 1) % 2
@@ -1328,7 +1337,7 @@ class Chess:
         return moves
 
     def make_move(self, move):
-        if self.winner is not None:
+        if self.winner is None:
             moves = self.get_moves()
             if move in moves[0][0]:
                 self.move = move
@@ -1392,7 +1401,7 @@ class Chess:
         return components
 
     def build_board(self):
-        board = ""
+        board = "<:quiggle:897058047137030184><:a_:878071110481117205><:b_:878071110544003114><:c_:878071110862766120><:d_:878071110455939104><:e_:878071110749532171><:f_:878071110510465106><:g_:878071110996987935><:h_:878071110892146728><:quiggle:897058047137030184>"
         for rank in range(8):
             board += f"\n{self.emojis[2][7 - rank]}"
             for file in range(8):
@@ -1403,7 +1412,8 @@ class Chess:
                     board += self.emojis[1][(file + rank) % 2][piece.color][
                         piece.piece_type
                     ]
-        board += "\n<:quiggle:897058047137030184><:a_:878071110481117205><:b_:878071110544003114><:c_:878071110862766120><:d_:878071110455939104><:e_:878071110749532171><:f_:878071110510465106><:g_:878071110996987935><:h_:878071110892146728>"
+            board += f"{self.emojis[2][7 - rank]}"
+        board += "\n<:quiggle:897058047137030184><:a_:878071110481117205><:b_:878071110544003114><:c_:878071110862766120><:d_:878071110455939104><:e_:878071110749532171><:f_:878071110510465106><:g_:878071110996987935><:h_:878071110892146728><:quiggle:897058047137030184>"
         return board
 
     def build_message(self):
@@ -1679,14 +1689,11 @@ if dev:
                 flags=hikari.MessageFlag.EPHEMERAL,
             )
 
-    # @bot.command
-    # @lightbulb.command("increment", f"increment test amount")
-    # @lightbulb.implements(lightbulb.SlashCommand)
-    # async def incrementcommand(ctx: lightbulb.SlashContext) -> None:
-    #     if dev:
-    #         await ctx.respond(
-    #             f""": {increment_leaderboard_value(ctx.author.id, "testgame")}"""
-    #         )
+    @bot.command
+    @lightbulb.command("test", "test")
+    @lightbulb.implements(lightbulb.MessageCommand)
+    async def testcommand(ctx: lightbulb.MessageContext) -> None:
+        await ctx.respond(await ctx.options.target.delete())
 
 else:
 
@@ -1763,7 +1770,7 @@ async def on_component_interaction(event: hikari.InteractionCreateEvent) -> None
                 l.set_label("Jump to game!")
                 l.add_to_container()
                 await (await bot.rest.fetch_user(int(game.players[game.turn]))).send(
-                    f"It's your turn in {(await bot.rest.fetch_guild(int(data['guild_id']))).name}!\n`psst, dont like the dms? turn off dms with /dmsettings`",
+                    f"It's your turn in {(await bot.rest.fetch_guild(int(data['guild_id']))).name}!\n`psst, dont like the dms? turn off dms with /settings`",
                     components=[components],
                 )
             pass
@@ -1781,11 +1788,9 @@ for i in setting_defaults.keys():
 
 
 @bot.command
-@lightbulb.option(
-    "value", "value to set this setting to", type=hikari.OptionType.BOOLEAN
-)
-@lightbulb.option("type", "setting to change", choices=choices)
-@lightbulb.command("boolsettings", "change boolean (true or false) quiggle settings")
+@lightbulb.option("value", "value to set to", type=hikari.OptionType.BOOLEAN)
+@lightbulb.option("type", "setting", choices=choices)
+@lightbulb.command("settings", "change quiggle settings")
 @lightbulb.implements(lightbulb.SlashCommand)
 async def setsetting(ctx: lightbulb.SlashContext):
     set_options(ctx.author.id, ctx.options.type, ctx.options.value)
@@ -1841,6 +1846,49 @@ async def winscommand(ctx: lightbulb.SlashContext) -> None:
     if winstring == f"Leaderboard for {readable[ctx.options.game]}":
         winstring = f"No stored wins for {readable[ctx.options.game]}"
     await ctx.respond(f"{winstring}", flags=hikari.MessageFlag.EPHEMERAL)
+
+
+@bot.command
+@lightbulb.command("forfeit", "Forfeit a game you are a part of")
+@lightbulb.implements(lightbulb.MessageCommand)
+async def forfeitcommand(ctx: lightbulb.MessageContext) -> None:
+    message = ctx.options.target
+    if message.author.id != bot.application.id:
+        await ctx.respond(
+            "Thats not a quiggle you little goober!", flags=hikari.MessageFlag.EPHEMERAL
+        )
+        return
+    try:
+        data = decode(message.content.split("```")[1].split("[")[0].strip())
+    except:
+        await ctx.respond("This isnt a valid game", flags=hikari.MessageFlag.EPHEMERAL)
+        return
+    if ctx.author.id in data["players"]:
+        await message.edit(
+            f"<@{ctx.author.id}> forfeit a game of {readable[data['type']]}",
+            components=None,
+            embeds=None,
+        )
+        await ctx.respond("Game forfeit!", flags=hikari.MessageFlag.EPHEMERAL)
+
+
+@bot.command
+@lightbulb.option("game", "Game to get Rules for", required=False, choices=choices)
+@lightbulb.command("help", "Get general command info, or rules for a game!")
+@lightbulb.implements(lightbulb.SlashCommand)
+async def helpcommand(ctx: lightbulb.SlashContext):
+    message = ""
+    if ctx.options.game is not None:
+        message = rules.get(
+            ctx.options.game, f"no rules written for {ctx.options.game} yet"
+        )
+    else:
+        for command in bot.slash_commands.keys():
+            options = ""
+            for option in bot.slash_commands[command].options.keys():
+                options += f"{option} (required: {bot.slash_commands[command].options[option].required}), "
+            message += f"{command} ({options[:-2]}): {bot.slash_commands[command].description}\n"
+    await ctx.respond(message, flags=hikari.MessageFlag.EPHEMERAL)
 
 
 bot.run()
